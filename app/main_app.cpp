@@ -1,3 +1,4 @@
+#define _USE_MATH_DEFINES
 #include <SDL3/SDL.h>
 #include <GL/glew.h>
 #include <iostream>
@@ -5,6 +6,7 @@
 #include <sstream>
 #include <vector>
 #include <string>
+#include <cmath>
 
 // ImGui
 #include "imgui.h"
@@ -16,9 +18,62 @@
 #include "Mesh.hpp"          // Conté la classe Mesh (Cube)
 #include "GraphicsUtils.hpp" // Conté helpers per OpenGL
 
+
 // TODO: Placeholder
-class Transform {};
-class GameObject {};
+class Transform {
+public:
+    Vec3 position = { 0.0, 0.0, 0.0 };
+    Vec3 rotation = { 0.0, 0.0, 0.0 }; 
+    Vec3 scale = { 1.0, 1.0, 1.0 };
+
+    Transform() {}
+
+    Matrix4x4 GetLocalMatrix() const {
+        const double rad = M_PI / 180.0;
+
+        // Graus a Radians
+        double radX = rotation.x * rad; 
+        double radY = rotation.y * rad; 
+        double radZ = rotation.z * rad; 
+
+        //Crear la Matriu de Rotació
+        Matrix3x3 matrot = Matrix3x3::FromEulerZYX(radY, radX, radZ);
+
+        // Covertir a TRS
+        return Matrix4x4::FromTRS(position, matrot, scale);
+    }
+};
+class GameObject {
+public:
+    Transform transform;                  
+    GameObject* parent = nullptr;         
+    std::vector<GameObject*> children;    
+
+    GameObject() {}
+
+    // Construir jerarquía 
+    void AddChild(GameObject* child) {
+        if (child) {
+            child->parent = this;       
+            children.push_back(child);  
+        }
+    }
+
+    Matrix4x4 GetGlobalMatrix() {
+        // Matriu local de l'objecte
+        Matrix4x4 localMatrix = transform.GetLocalMatrix();
+
+        //si no es arrel
+        if (parent != nullptr) {
+            Matrix4x4 parentGlobal = parent->GetGlobalMatrix();
+
+            // M_global = M_parent_global * M_local
+            return parentGlobal.Multiply(localMatrix);
+        }
+        //si es arrel
+        return localMatrix;
+    }
+};
 class Camera {};
 
 // -----------------------------------------------------------------------------
@@ -95,21 +150,22 @@ void DrawHierarchyNode(GameObject* node) {
     }
 
 	//TODO: Si l'objecte no té fills (leaf), fer servir aquest codi:
-    flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
-    ImGui::TreeNodeEx((void*)(intptr_t)node, flags, "%s", "TODO: <Nom Objecte>");
-    if (ImGui::IsItemClicked()) selectedObject = node;
+    //flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+    //ImGui::TreeNodeEx((void*)(intptr_t)node, flags, "%s", "TODO: <Nom Objecte>");
+    //if (ImGui::IsItemClicked()) selectedObject = node;
 
 	//TODO: Si l'objecte té fills, fer servir aquest codi:
-
-    /*
     bool nodeOpen = ImGui::TreeNodeEx((void*)(intptr_t)node, flags, "%s", "TODO: <Nom Objecte>");
     if (ImGui::IsItemClicked()) selectedObject = node;
 
     if (nodeOpen) {
+        for (auto* child : node->children) {
+            DrawHierarchyNode(child);
+        }
 		// TODO: Cridar recursivament DrawHierarchyNode pels fills de l'objecte
         ImGui::TreePop();
     }
-    */
+    
 }
 
 // -----------------------------------------------------------------------------
@@ -208,31 +264,49 @@ int main(int argc, char** argv) {
         ImGui::Begin("Inspector");
         if (selectedObject) {
             ImGui::Text("Selected: %s", "TODO: <Nom Objecte>");
-            ImGui::Separator();
+            ImGui::Separator();    
 
-			float pos[3] = { 0,0,0 }; // TODO: Agafar la posició del selectedObject
+            float pos[3] = {
+                (float)selectedObject->transform.position.x,
+                (float)selectedObject->transform.position.y,
+                (float)selectedObject->transform.position.z
+            }; // TODO: Agafar la posició del selectedObject
             if (ImGui::DragFloat3("Position", pos, 0.1f))
             {
+                selectedObject->transform.position = { (double)pos[0], (double)pos[1], (double)pos[2] };
 				//TODO: Actualitzar la posició del selectedObject
             }
 
-			float rot[3] = { 0,0,0 }; // TODO: Agafar la rotació del selectedObject
+            float rot[3] = {
+                (float)selectedObject->transform.rotation.x,
+                (float)selectedObject->transform.rotation.y,
+                (float)selectedObject->transform.rotation.z
+            };  // TODO: Agafar la rotació del selectedObject
             if (ImGui::DragFloat3("Rotation (Euler)", rot, 0.5f))
             {
+                selectedObject->transform.rotation = { (double)rot[0], (double)rot[1], (double)rot[2] };
 				// TODO: Actualitzar la rotació del selectedObject
             }
 
-			float scl[3] = { 0,0,0 }; // TODO: Agafar l'escala del selectedObject
+            float scl[3] = {
+                (float)selectedObject->transform.scale.x,
+                (float)selectedObject->transform.scale.y,
+                (float)selectedObject->transform.scale.z
+            }; // TODO: Agafar l'escala del selectedObject
             if (ImGui::DragFloat3("Scale", scl, 0.1f))
             {
+                selectedObject->transform.scale = { (double)scl[0], (double)scl[1], (double)scl[2] };
 				// TODO: Actualitzar l'escala del selectedObject
             }
 
             ImGui::Separator();
             if (ImGui::Button("Add Child")) 
             {
+                GameObject* child = new GameObject();
+                selectedObject->AddChild(child);
 				// TODO: Afegir un nou GameObject com a fill del selectedObject
             }
+
         }
         else {
             ImGui::Text("Select an object from Hierarchy.");

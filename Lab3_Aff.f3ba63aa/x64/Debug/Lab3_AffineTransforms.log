@@ -1,0 +1,5 @@
+﻿  main_app.cpp
+C:\Users\usuari\Documents\GitHub\Math_Project\app\main_app.cpp(179,9): warning C4101: 'mainCamera': unreferenced local variable
+  Quat.cpp
+  Generating Code...
+  Lab3_AffineTransforms.vcxproj -> C:\Users\usuari\Documents\GitHub\Math_Project\x64\Debug\Lab3_AffineTransforms.exe

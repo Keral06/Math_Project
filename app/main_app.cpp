@@ -17,7 +17,20 @@
 #include "Matrix4x4.hpp"
 #include "Mesh.hpp"          // Conté la classe Mesh (Cube)
 #include "GraphicsUtils.hpp" // Conté helpers per OpenGL
+//necesito hacer un quat que sea donde esta mirando el objeto, donde tiene que rotat la matriz.
+Quat LookRotation(const Vec3& forward, const Vec3& up)
+{
+    Vec3 f = forward.Normalize();
+    Vec3 r = Vec3 :: Cross(up,f).Normalize();
+    Vec3 u = Vec3::Cross(f,r);
 
+    Matrix3x3 rot;
+    rot.At(0, 0) = r.x; rot.At(0, 1) = r.y; rot.At(0, 2) = r.z;
+    rot.At(1, 0) = u.x; rot.At(1, 1) = u.y; rot.At(1, 2) = u.z;
+    rot.At(2, 0) = f.x; rot.At(2, 1) = f.y; rot.At(2, 2) = f.z;
+
+    return Quat::FromMatrix3x3(rot).Normalized();
+}
 Vec3 Lerp(const Vec3& a, const Vec3& b, double t)
 {
     return Vec3{
@@ -246,20 +259,44 @@ void DrawHierarchyNode(GameObject* node, Camera& cam)
 
         if (selectedObject != lastSelectedObject)
         {
+
             Matrix4x4 g = selectedObject->GetGlobalMatrix();
-            Vec3 objPos(
-                g.At(0, 3),
-                g.At(1, 3),
-                g.At(2, 3)
-            );
+            Vec3 objPos = g.GetTranslation();
 
-            cam.targetPosition = Vec3(
-                objPos.x,
-                objPos.y,
-                objPos.z + 5.0
-            );
+            // --- Compute front direction in world space ---
+            Vec3 localForward = Vec3(0, 0, -1); // cube's local front
+            Vec3 objForward = Vec3(
+                g.At(0, 0) * localForward.x + g.At(0, 1) * localForward.y + g.At(0, 2) * localForward.z,
+                g.At(1, 0) * localForward.x + g.At(1, 1) * localForward.y + g.At(1, 2) * localForward.z,
+                g.At(2, 0) * localForward.x + g.At(2, 1) * localForward.y + g.At(2, 2) * localForward.z
+            ).Normalize();
+            double offsetDistance = 5.0;
+            cam.targetPosition = {
+				objPos.x - objForward.x * offsetDistance,
+				objPos.y - objForward.y * offsetDistance,
+				objPos.z - objForward.z * offsetDistance
 
+            };
             cam.isMoving = true;
+            double distanceInFront = 2.0;
+            Vec3 facePoint = {objPos.x + objForward.x * distanceInFront,
+            objPos.y +objForward.y * distanceInFront,
+            objPos.z +objForward.z * distanceInFront};
+                
+            // --- Compute target rotation ---
+            Vec3 camDir = {
+            facePoint.x - cam.targetPosition.x,
+            facePoint.y - cam.transform.position.y,
+            facePoint.z - cam.transform.position.z
+            };
+
+			camDir = camDir.Normalize();
+            cam.targetRotation = LookRotation(camDir, Vec3(0, 1, 0));
+            cam.isRotating = true;
+
+            lastSelectedObject = selectedObject;
+
+
             lastSelectedObject = selectedObject;
         }
     }
@@ -274,6 +311,36 @@ void DrawHierarchyNode(GameObject* node, Camera& cam)
             fabs(cam.transform.position.z - cam.targetPosition.z) < 0.1)
         {
             cam.isMoving = false;
+        }
+    }
+    if (cam.isRotating)
+    {
+        cam.currentRotation = Slerp(cam.currentRotation.Normalized(), cam.targetRotation.Normalized(), 0.1);
+
+        double yaw, pitch, roll;
+        cam.currentRotation.ToEulerZYX(roll, pitch, yaw);
+
+        cam.transform.rotation = Vec3(
+            roll * (180.0 / M_PI),
+            pitch * (180.0 / M_PI),
+            yaw * (180.0 / M_PI)
+        );
+
+        double dot = cam.currentRotation.s * cam.targetRotation.s +
+            cam.currentRotation.x * cam.targetRotation.x +
+            cam.currentRotation.y * cam.targetRotation.y +
+            cam.currentRotation.z * cam.targetRotation.z;
+
+        if (dot > 0.9995)
+        {
+            cam.isRotating = false;
+            cam.currentRotation = cam.targetRotation;
+            cam.currentRotation.ToEulerZYX(roll, pitch, yaw);
+            cam.transform.rotation = Vec3(
+                roll * (180.0 / M_PI),
+                pitch * (180.0 / M_PI),
+                yaw * (180.0 / M_PI)
+            );
         }
     }
 
@@ -308,6 +375,7 @@ void RenderNode(GameObject* node, GLuint shaderProgram, const Matrix4x4& view, c
 // -----------------------------------------------------------------------------
 // MAIN (TODO)
 // -----------------------------------------------------------------------------
+bool mouseclicked = false;
 int main(int argc, char** argv) {
     // 1. Setup SDL & OpenGL
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -368,8 +436,29 @@ int main(int argc, char** argv) {
 
             if (event.type == SDL_EVENT_QUIT)
                 running = false;
+            
+            //if the mouse clicks in the window
+            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
 
-            if (event.type == SDL_EVENT_KEY_DOWN)
+				mouseclicked = true;
+            }
+			if (event.type == SDL_EVENT_MOUSE_BUTTON_UP) { mouseclicked = false; }
+                if (event.type==SDL_EVENT_MOUSE_MOTION && mouseclicked && !ImGui::IsAnyItemActive())
+                {
+                    float dx = event.motion.xrel;
+                    float dy = event.motion.yrel;
+
+                    if(dx<0)
+                        mainCamera.transform.rotation.x -= 1.0;
+                    else if(dx>0)
+						mainCamera.transform.rotation.x += 1.0;
+
+                    if(dy<0)
+                        mainCamera.transform.rotation.z -= 1.0;
+                    else if(dy>0)
+                        mainCamera.transform.rotation.z += 1.0;
+				}
+				
             {
                 if (event.key.scancode == SDL_SCANCODE_W)
                     mainCamera.transform.position.y -= 0.1;

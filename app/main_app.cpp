@@ -74,8 +74,47 @@ public:
         return localMatrix;
     }
 };
-class Camera {};
+class Camera {
+public:
+    Transform transform;
 
+    double fovY = 60.0;      
+    double aspectRatio = 1.777; 
+    double nearPlane = 0.1;
+    double farPlane = 100.0;
+
+    Camera() {}
+
+    // matriu de vista
+    Matrix4x4 GetViewMatrix() {
+        //Inversa de la transformació global de la cámara
+        Matrix4x4 globalCamera = transform.GetLocalMatrix();
+
+        // Inverse TR x per la inversa
+        return globalCamera.InverseTR();
+    }
+
+    // matriu de projecció en perspectiva  
+    Matrix4x4 GetProjectionMatrix() const {
+        Matrix4x4 P; 
+        double radFov = fovY * (M_PI / 180.0);
+
+        double tanHalfFov = std::tan(radFov / 2.0);
+        double top = nearPlane * tanHalfFov;
+        double bottom = -top;
+        double right = top * aspectRatio;
+        double left = -right;
+
+        P.At(0, 0) = nearPlane / right;     //x       
+        P.At(1, 1) = nearPlane / top;       //y      
+        P.At(2, 2) = -(farPlane + nearPlane) / (farPlane - nearPlane);          //z
+        P.At(2, 3) = -(2.0 * farPlane * nearPlane) / (farPlane - nearPlane);    //z
+        P.At(3, 2) = -1.0;      //w
+        P.At(3, 3) = 0.0;       //w
+
+        return P;
+    }
+};
 // -----------------------------------------------------------------------------
 // HELPER: Càrrega de fitxers de text (per Shaders)
 // -----------------------------------------------------------------------------
@@ -175,10 +214,17 @@ void RenderNode(GameObject* node, GLuint shaderProgram, const Matrix4x4& view, c
     if (!node) return;
 
     // TODO: Implementar el recorregut recursiu de renderitzat
+    Matrix4x4 model = node->GetGlobalMatrix();
     // 1. Calcular la matriu Model (Global) de l'objecte actual.
+    GraphicsUtils::UploadMVP(shaderProgram, model, view, proj);
     // 2. Enviar les matrius Model, View i Projection al shader (usant GraphicsUtils).
+    GraphicsUtils::UploadColor(shaderProgram, Vec3(1.0, 0.0, 0.0));
     // 3. Enviar color (usant GraphicsUtils).
+    mesh.Draw();
     // 4. Dibuixar la mesh.
+    for (auto* child : node->children) {
+        RenderNode(child, shaderProgram, view, proj, mesh);
+    }
     // 5. Cridar recursivament RenderNode pels fills.
 }
 
@@ -233,7 +279,7 @@ int main(int argc, char** argv) {
     std::vector<GameObject*> sceneRoots = { rootObject };
 
 	Camera mainCamera; //TODO: Inicialitzar la càmera
-
+    mainCamera.transform.position.z = 5.0;
 	// 5. Loop Principal
     bool running = true;
     while (running) {
@@ -315,24 +361,37 @@ int main(int argc, char** argv) {
 
         // UI: Camera
         ImGui::Begin("Camera Settings");
-		float fov = 0; // TODO: Agafar el FOV de la càmera
+        float fov = (float)mainCamera.fovY; // TODO: Agafar el FOV de la càmera
         if (ImGui::SliderFloat("FOV (Y)", &fov, 10.0f, 170.0f))
         {
+            mainCamera.fovY = (double)fov;
 			// TODO: Actualitzar el FOV de la càmera
         }
 
-		float nearP = 0, farP = 0; // TODO: Agafar near i far de la càmera
+        float nearP = (float)mainCamera.nearPlane;
+        float farP = (float)mainCamera.farPlane; // TODO: Agafar near i far de la càmera
         ImGui::DragFloat("Near Plane", &nearP, 0.1f);
         ImGui::DragFloat("Far Plane", &farP, 1.0f);
         
-		// TODO: Actualitzar near i far de la càmera si canvien
+            if (nearP < 0.01f) nearP = 0.01f;
+            if (farP <= nearP) farP = nearP + 0.1f;
+
+            mainCamera.nearPlane = (double)nearP;
+            mainCamera.farPlane = (double)farP;
+        
+        // TODO: Actualitzar near i far de la càmera si canvien
 
 
         ImGui::Separator();
         ImGui::Text("Camera Transform");
-		float cPos[3] = { 0,0,0 }; // TODO: Agafar la posició de la càmera
+        float cPos[3] = {
+            (float)mainCamera.transform.position.x,
+            (float)mainCamera.transform.position.y,
+            (float)mainCamera.transform.position.z
+        }; // TODO: Agafar la posició de la càmera
         if (ImGui::DragFloat3("Pos", cPos, 0.1f))
         {
+            mainCamera.transform.position = Vec3((double)cPos[0], (double)cPos[1], (double)cPos[2]);
 			// TODO: Actualitzar la posició de la càmera
         }
         ImGui::End();
@@ -343,6 +402,7 @@ int main(int argc, char** argv) {
         glViewport(0, 0, w, h);
         if (h > 0)
         {
+            mainCamera.aspectRatio = (double)w / (double)h;
 			// TODO: Actualitzar aspect ratio de la càmera
         }
 
@@ -353,10 +413,13 @@ int main(int argc, char** argv) {
             glUseProgram(shaderProgram);
 
             // TODO: Càlculs de Càmera (View i Projection)
-            Matrix4x4 view{};
-            Matrix4x4 proj{};
+            Matrix4x4 view = mainCamera.GetViewMatrix();
+            Matrix4x4 proj = mainCamera.GetProjectionMatrix();
 
 			// TODO: Recorregut de l'escena i renderitzat (RenderNode)
+            for (auto* obj : sceneRoots) {
+                RenderNode(obj, shaderProgram, view, proj, cubeMesh);
+            }
         }
 
         ImGui::Render();

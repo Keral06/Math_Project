@@ -18,7 +18,56 @@
 #include "Mesh.hpp"          // Conté la classe Mesh (Cube)
 #include "GraphicsUtils.hpp" // Conté helpers per OpenGL
 
+Vec3 Lerp(const Vec3& a, const Vec3& b, double t)
+{
+    return Vec3{
+        a.x + (b.x - a.x) * t,
+        a.y + (b.y - a.y) * t,
+        a.z + (b.z - a.z) * t
+    };
+}
 
+Quat Slerp(const Quat& a, const Quat& b, double t)
+{
+    Quat q1 = a.Normalized();
+    Quat q2 = b.Normalized();
+
+    double dot = q1.s * q2.s + q1.x * q2.x + q1.y * q2.y + q1.z * q2.z;
+
+    if (dot < 0.0)
+    {
+        q2.s = -q2.s;
+        q2.x = -q2.x;
+        q2.y = -q2.y;
+        q2.z = -q2.z;
+        dot = -dot;
+    }
+
+    const double DOT_THRESHOLD = 0.9995;
+    if (dot > DOT_THRESHOLD)
+    {
+        Quat result = {
+            q1.s + t * (q2.s - q1.s),
+            q1.x + t * (q2.x - q1.x),
+            q1.y + t * (q2.y - q1.y),
+            q1.z + t * (q2.z - q1.z)
+        };
+        return result.Normalized();
+    }
+
+    double theta_0 = acos(dot);
+    double theta = theta_0 * t;
+    double sin_theta = sin(theta);
+    double sin_theta_0 = sin(theta_0);
+
+    Quat result;
+    result.s = (cos(theta) - dot * sin_theta / sin_theta_0) * q1.s + (sin_theta / sin_theta_0) * q2.s;
+    result.x = (cos(theta) - dot * sin_theta / sin_theta_0) * q1.x + (sin_theta / sin_theta_0) * q2.x;
+    result.y = (cos(theta) - dot * sin_theta / sin_theta_0) * q1.y + (sin_theta / sin_theta_0) * q2.y;
+    result.z = (cos(theta) - dot * sin_theta / sin_theta_0) * q1.z + (sin_theta / sin_theta_0) * q2.z;
+
+    return result.Normalized();
+}
 // TODO: Placeholder
 class Transform {
 public:
@@ -74,44 +123,41 @@ public:
         return localMatrix;
     }
 };
-class Camera {
+class Camera
+{
 public:
     Transform transform;
-
-    double fovY = 60.0;      
-    double aspectRatio = 1.777; 
+    double fovY = 60.0;
+    double aspectRatio = 1.777;
     double nearPlane = 0.1;
     double farPlane = 100.0;
 
-    Camera() {}
+    bool isMoving = false;
+    bool isRotating = false;
 
-    // matriu de vista
-    Matrix4x4 GetViewMatrix() {
-        //Inversa de la transformació global de la cámara
-        Matrix4x4 globalCamera = transform.GetLocalMatrix();
+    Quat currentRotation{ 1.0, 0.0, 0.0, 0.0 };
+    Vec3 targetPosition{ 0.0, 0.0, 0.0 };
+    Quat targetRotation{ 1.0, 0.0, 0.0, 0.0 };
 
-        // Inverse TR x per la inversa
-        return globalCamera.InverseTR();
+    Matrix4x4 GetViewMatrix()
+    {
+        Matrix4x4 global = transform.GetLocalMatrix();
+        return global.InverseTR();
     }
 
-    // matriu de projecció en perspectiva  
-    Matrix4x4 GetProjectionMatrix() const {
-        Matrix4x4 P; 
-        double radFov = fovY * (M_PI / 180.0);
+    Matrix4x4 GetProjectionMatrix() const
+    {
+        Matrix4x4 P;
+        double rad = fovY * (M_PI / 180.0);
+        double t = tan(rad / 2.0) * nearPlane;
+        double r = t * aspectRatio;
 
-        double tanHalfFov = std::tan(radFov / 2.0);
-        double top = nearPlane * tanHalfFov;
-        double bottom = -top;
-        double right = top * aspectRatio;
-        double left = -right;
-
-        P.At(0, 0) = nearPlane / right;     //x       
-        P.At(1, 1) = nearPlane / top;       //y      
-        P.At(2, 2) = -(farPlane + nearPlane) / (farPlane - nearPlane);          //z
-        P.At(2, 3) = -(2.0 * farPlane * nearPlane) / (farPlane - nearPlane);    //z
-        P.At(3, 2) = -1.0;      //w
-        P.At(3, 3) = 0.0;       //w
-
+        P.At(0, 0) = nearPlane / r;
+        P.At(1, 1) = nearPlane / t;
+        P.At(2, 2) = -(farPlane + nearPlane) / (farPlane - nearPlane);
+        P.At(2, 3) = -(2.0 * farPlane * nearPlane) / (farPlane - nearPlane);
+        P.At(3, 2) = -1.0;
+        P.At(3, 3) = 0.0;
         return P;
     }
 };
@@ -179,34 +225,65 @@ GLuint CreateShaderProgram(const std::string& vertPath, const std::string& fragP
 // UI: (TODO)
 // -----------------------------------------------------------------------------
 GameObject* selectedObject = nullptr;
+GameObject* lastSelectedObject = nullptr;
 
-void DrawHierarchyNode(GameObject* node) {
+void DrawHierarchyNode(GameObject* node, Camera& cam)
+{
     if (!node) return;
 
-    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick;
-    if (node == selectedObject) {
+    ImGuiTreeNodeFlags flags =
+        ImGuiTreeNodeFlags_OpenOnArrow |
+        ImGuiTreeNodeFlags_OpenOnDoubleClick;
+
+    if (node == selectedObject)
         flags |= ImGuiTreeNodeFlags_Selected;
+
+    bool open = ImGui::TreeNodeEx((void*)node, flags, "GameObject");
+
+    if (ImGui::IsItemClicked())
+    {
+        selectedObject = node;
+
+        if (selectedObject != lastSelectedObject)
+        {
+            Matrix4x4 g = selectedObject->GetGlobalMatrix();
+            Vec3 objPos(
+                g.At(0, 3),
+                g.At(1, 3),
+                g.At(2, 3)
+            );
+
+            cam.targetPosition = Vec3(
+                objPos.x,
+                objPos.y,
+                objPos.z + 5.0
+            );
+
+            cam.isMoving = true;
+            lastSelectedObject = selectedObject;
+        }
     }
 
-	//TODO: Si l'objecte no té fills (leaf), fer servir aquest codi:
-    //flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
-    //ImGui::TreeNodeEx((void*)(intptr_t)node, flags, "%s", "TODO: <Nom Objecte>");
-    //if (ImGui::IsItemClicked()) selectedObject = node;
+    if (cam.isMoving)
+    {
+        cam.transform.position =
+            Lerp(cam.transform.position, cam.targetPosition, 0.1);
 
-	//TODO: Si l'objecte té fills, fer servir aquest codi:
-    bool nodeOpen = ImGui::TreeNodeEx((void*)(intptr_t)node, flags, "%s", "TODO: <Nom Objecte>");
-    if (ImGui::IsItemClicked()) selectedObject = node;
-
-    if (nodeOpen) {
-        for (auto* child : node->children) {
-            DrawHierarchyNode(child);
+        if (fabs(cam.transform.position.x - cam.targetPosition.x) < 0.1 &&
+            fabs(cam.transform.position.y - cam.targetPosition.y) < 0.1 &&
+            fabs(cam.transform.position.z - cam.targetPosition.z) < 0.1)
+        {
+            cam.isMoving = false;
         }
-		// TODO: Cridar recursivament DrawHierarchyNode pels fills de l'objecte
+    }
+
+    if (open)
+    {
+        for (auto* c : node->children)
+            DrawHierarchyNode(c, cam);
         ImGui::TreePop();
     }
-    
 }
-
 // -----------------------------------------------------------------------------
 // RENDER (TODO)
 // -----------------------------------------------------------------------------
@@ -285,11 +362,26 @@ int main(int argc, char** argv) {
     while (running) {
         // --- INPUT ---
         SDL_Event event;
-        while (SDL_PollEvent(&event)) {
+        while (SDL_PollEvent(&event))
+        {
             ImGui_ImplSDL3_ProcessEvent(&event);
-            if (event.type == SDL_EVENT_QUIT) running = false;
-            if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && event.window.windowID == SDL_GetWindowID(window)) running = false;
+
+            if (event.type == SDL_EVENT_QUIT)
+                running = false;
+
+            if (event.type == SDL_EVENT_KEY_DOWN)
+            {
+                if (event.key.scancode == SDL_SCANCODE_W)
+                    mainCamera.transform.position.y -= 0.1;
+                else if (event.key.scancode == SDL_SCANCODE_S)
+                    mainCamera.transform.position.y += 0.1;
+                else if (event.key.scancode == SDL_SCANCODE_A)
+                    mainCamera.transform.position.x -= 0.1;
+                else if (event.key.scancode == SDL_SCANCODE_D)
+                    mainCamera.transform.position.x += 0.1;
+            }
         }
+
 
         // --- UPDATE UI ---
         ImGui_ImplOpenGL3_NewFrame();
@@ -303,7 +395,7 @@ int main(int argc, char** argv) {
 			//TODO: Afegir un nou GameObject a l'arrel de l'escena
         }
         ImGui::Separator();
-        for (auto* obj : sceneRoots) DrawHierarchyNode(obj);
+        for (auto* obj : sceneRoots) DrawHierarchyNode(obj, mainCamera);
         ImGui::End();
 
         // UI: Inspector

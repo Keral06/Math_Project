@@ -18,19 +18,7 @@
 #include "Mesh.hpp"          // Conté la classe Mesh (Cube)
 #include "GraphicsUtils.hpp" // Conté helpers per OpenGL
 //necesito hacer un quat que sea donde esta mirando el objeto, donde tiene que rotat la matriz.
-Quat LookRotation(const Vec3& forward, const Vec3& up)
-{
-    Vec3 f = forward.Normalize();
-    Vec3 r = Vec3 :: Cross(up,f).Normalize();
-    Vec3 u = Vec3::Cross(f,r);
 
-    Matrix3x3 rot;
-    rot.At(0, 0) = r.x; rot.At(0, 1) = r.y; rot.At(0, 2) = r.z;
-    rot.At(1, 0) = u.x; rot.At(1, 1) = u.y; rot.At(1, 2) = u.z;
-    rot.At(2, 0) = f.x; rot.At(2, 1) = f.y; rot.At(2, 2) = f.z;
-
-    return Quat::FromMatrix3x3(rot).Normalized();
-}
 Vec3 Lerp(const Vec3& a, const Vec3& b, double t)
 {
     return Vec3{
@@ -143,6 +131,7 @@ public:
     double fovY = 60.0;
     double aspectRatio = 1.777;
     double nearPlane = 0.1;
+
     double farPlane = 100.0;
 
     bool isMoving = false;
@@ -259,90 +248,89 @@ void DrawHierarchyNode(GameObject* node, Camera& cam)
 
         if (selectedObject != lastSelectedObject)
         {
+            Matrix4x4 objectWorld = selectedObject->GetGlobalMatrix();
+			Vec3 objectPosition = objectWorld.GetTranslation();
+			Vec3 cameraposition = cam.transform.position;
 
-            Matrix4x4 g = selectedObject->GetGlobalMatrix();
-            Vec3 objPos = g.GetTranslation();
-
-            // --- Compute front direction in world space ---
-            Vec3 localForward = Vec3(0, 0, -1); // cube's local front
-            Vec3 objForward = Vec3(
-                g.At(0, 0) * localForward.x + g.At(0, 1) * localForward.y + g.At(0, 2) * localForward.z,
-                g.At(1, 0) * localForward.x + g.At(1, 1) * localForward.y + g.At(1, 2) * localForward.z,
-                g.At(2, 0) * localForward.x + g.At(2, 1) * localForward.y + g.At(2, 2) * localForward.z
-            ).Normalize();
-            double offsetDistance = 5.0;
-            cam.targetPosition = {
-				objPos.x - objForward.x * offsetDistance,
-				objPos.y - objForward.y * offsetDistance,
-				objPos.z - objForward.z * offsetDistance
+            Vec3 forward = Vec3{
+			objectPosition.x - cameraposition.x,
+			objectPosition.y - cameraposition.y - 5,
+			objectPosition.z - cameraposition.z
 
             };
-            cam.isMoving = true;
-            double distanceInFront = 2.0;
-            Vec3 facePoint = {objPos.x + objForward.x * distanceInFront,
-            objPos.y +objForward.y * distanceInFront,
-            objPos.z +objForward.z * distanceInFront};
-                
-            // --- Compute target rotation ---
-            Vec3 camDir = {
-            facePoint.x - cam.targetPosition.x,
-            facePoint.y - cam.transform.position.y,
-            facePoint.z - cam.transform.position.z
-            };
+            if(forward.Norm() == 0 )
+				forward = Vec3(0.0f, 0.0f, -1.0f);
+            forward.x = forward.x * -1;
+			forward.y = forward.y * -1;
+			forward.z = forward.z * -1;
+			forward = forward.Normalize();
+            Vec3 worldUp(0.0f, 1.0f, 0.0f);
+            if (fabs(Vec3::Dot(worldUp,forward)) > 0.999f) {
+                worldUp = Vec3(0, 0, 1);
+            }
+            Vec3 right = Vec3::Cross(worldUp,forward).Normalize();
+            Vec3 up = Vec3::Cross(forward,right).Normalize(); 
+			Matrix4x4 m = Matrix4x4::Identity();;
 
-			camDir = camDir.Normalize();
-            cam.targetRotation = LookRotation(camDir, Vec3(0, 1, 0));
-            cam.isRotating = true;
+            // los vectores para la rotacion=??
+            m.At(0, 0) = right.x;   m.At(1, 0) = right.y;   m.At(2, 0) = right.z;
+            m.At(0, 1) = up.x;      m.At(1, 1) = up.y;      m.At(2, 1) = up.z;
+            m.At(0, 2) = forward.x; m.At(1, 2) = forward.y; m.At(2, 2) = forward.z;
 
-            lastSelectedObject = selectedObject;
+            //la columna de translacion
+            m.At(0, 3) = objectPosition.x;
+            m.At(1, 3) = objectPosition.y + 2.0;
+            m.At(2, 3) = objectPosition.z + 2.0;
 
-
-            lastSelectedObject = selectedObject;
+            // fila d abajo para q sea afin
+            m.At(3, 0) = 0.0;
+            m.At(3, 1) = 0.0;
+            m.At(3, 2) = 0.0;
+            m.At(3, 3) = 1.0;
+           
+			Quat lookRotation = Quat::FromMatrix3x3(m.GetRotation());
+			cam.targetRotation = lookRotation;
+			cam.targetPosition = m.GetTranslation();
+			cam.isMoving = true;
+			cam.isRotating = true;
+			
+            
         }
+
+            lastSelectedObject = selectedObject;
+			
+        
     }
-
-    if (cam.isMoving)
+    if(cam.isMoving)
     {
-        cam.transform.position =
-            Lerp(cam.transform.position, cam.targetPosition, 0.1);
-
-        if (fabs(cam.transform.position.x - cam.targetPosition.x) < 0.1 &&
-            fabs(cam.transform.position.y - cam.targetPosition.y) < 0.1 &&
-            fabs(cam.transform.position.z - cam.targetPosition.z) < 0.1)
+        cam.transform.position = Lerp(cam.transform.position, cam.targetPosition, 0.1);
+        if (cam.transform.position.x - cam.targetPosition.x < 0.01 &&
+            cam.transform.position.y - cam.targetPosition.y <0.01 &&
+            cam.transform.position.z - cam.targetPosition.z <0.01)
         {
+            cam.transform.position = cam.targetPosition;
             cam.isMoving = false;
         }
     }
-    if (cam.isRotating)
-    {
-        cam.currentRotation = Slerp(cam.currentRotation.Normalized(), cam.targetRotation.Normalized(), 0.1);
 
-        double yaw, pitch, roll;
-        cam.currentRotation.ToEulerZYX(roll, pitch, yaw);
-
-        cam.transform.rotation = Vec3(
-            roll * (180.0 / M_PI),
-            pitch * (180.0 / M_PI),
-            yaw * (180.0 / M_PI)
-        );
-
-        double dot = cam.currentRotation.s * cam.targetRotation.s +
-            cam.currentRotation.x * cam.targetRotation.x +
-            cam.currentRotation.y * cam.targetRotation.y +
-            cam.currentRotation.z * cam.targetRotation.z;
-
-        if (dot > 0.9995)
+    if(cam.isRotating){
+        cam.currentRotation = Slerp(cam.currentRotation, cam.targetRotation, 0.1);
+		double yaw, pitch, roll;
+        cam.currentRotation.ToEulerZYX(yaw,pitch,roll);
+		cam.transform.rotation = Vec3{ pitch * (180.0 / M_PI), yaw * (180.0 / M_PI), roll * (180.0 / M_PI) };
+        Quat diff = Quat::RotateToTarget(cam.currentRotation, cam.targetRotation);
+        double angle;
+        Vec3 axis;
+        diff.ToAxisAngle(axis, angle);
+        if (fabs(angle) < 0.01)
         {
+            double yaw, pitch, roll;
+            cam.currentRotation.ToEulerZYX(yaw, pitch, roll);
+            cam.transform.rotation = Vec3{ pitch * (180.0 / M_PI), yaw * (180.0 / M_PI), roll * (180.0 / M_PI) };
             cam.isRotating = false;
-            cam.currentRotation = cam.targetRotation;
-            cam.currentRotation.ToEulerZYX(roll, pitch, yaw);
-            cam.transform.rotation = Vec3(
-                roll * (180.0 / M_PI),
-                pitch * (180.0 / M_PI),
-                yaw * (180.0 / M_PI)
-            );
         }
-    }
+	}
+ 
 
     if (open)
     {

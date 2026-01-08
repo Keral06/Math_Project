@@ -249,28 +249,33 @@ void DrawHierarchyNode(GameObject* node, Camera& cam)
         if (selectedObject != lastSelectedObject)
         {
             Matrix4x4 objectWorld = selectedObject->GetGlobalMatrix();
-			Vec3 objectPosition = objectWorld.GetTranslation();
-			Vec3 cameraposition = cam.transform.position;
-
+            Vec3 objectPosition = objectWorld.GetTranslation();
+            Vec3 cameraposition = cam.transform.position;
+            Vec3 finalPos = {
+                    objectPosition.x,
+                    objectPosition.y,
+                    objectPosition.z +2.0f
+            };
             Vec3 forward = Vec3{
-			objectPosition.x - cameraposition.x,
-			objectPosition.y - cameraposition.y - 5,
-			objectPosition.z - cameraposition.z
+            finalPos.x - cameraposition.x,
+            finalPos.y - cameraposition.y,
+            finalPos.z - cameraposition.z
+
 
             };
-            if(forward.Norm() == 0 )
-				forward = Vec3(0.0f, 0.0f, -1.0f);
+            if (forward.Norm() == 0)
+                forward = Vec3(0.0f, 0.0f, -1.0f);
             forward.x = forward.x * -1;
-			forward.y = forward.y * -1;
-			forward.z = forward.z * -1;
-			forward = forward.Normalize();
+            forward.y = forward.y * -1;
+            forward.z = forward.z * -1;
+            forward = forward.Normalize();
             Vec3 worldUp(0.0f, 1.0f, 0.0f);
-            if (fabs(Vec3::Dot(worldUp,forward)) > 0.999f) {
+            if (fabs(Vec3::Dot(worldUp, forward)) > 0.999f) {
                 worldUp = Vec3(0, 0, 1);
             }
-            Vec3 right = Vec3::Cross(worldUp,forward).Normalize();
-            Vec3 up = Vec3::Cross(forward,right).Normalize(); 
-			Matrix4x4 m = Matrix4x4::Identity();;
+            Vec3 right = Vec3::Cross(worldUp, forward).Normalize();
+            Vec3 up = Vec3::Cross(forward, right).Normalize();
+            Matrix4x4 m = Matrix4x4::Identity();;
 
             // los vectores para la rotacion=??
             m.At(0, 0) = right.x;   m.At(1, 0) = right.y;   m.At(2, 0) = right.z;
@@ -278,46 +283,46 @@ void DrawHierarchyNode(GameObject* node, Camera& cam)
             m.At(0, 2) = forward.x; m.At(1, 2) = forward.y; m.At(2, 2) = forward.z;
 
             //la columna de translacion
-            m.At(0, 3) = objectPosition.x;
-            m.At(1, 3) = objectPosition.y + 2.0;
-            m.At(2, 3) = objectPosition.z + 2.0;
+            m.At(0, 3) = finalPos.x;
+            m.At(1, 3) = finalPos.y;
+            m.At(2, 3) = finalPos.z ;
 
             // fila d abajo para q sea afin
             m.At(3, 0) = 0.0;
             m.At(3, 1) = 0.0;
             m.At(3, 2) = 0.0;
             m.At(3, 3) = 1.0;
-           
-			Quat lookRotation = Quat::FromMatrix3x3(m.GetRotation());
-			cam.targetRotation = lookRotation;
-			cam.targetPosition = m.GetTranslation();
-			cam.isMoving = true;
-			cam.isRotating = true;
-			
-            
+
+            Quat lookRotation = Quat::FromMatrix3x3(m.GetRotation());
+            cam.targetRotation = lookRotation;
+            cam.targetPosition = m.GetTranslation();
+            cam.isMoving = true;
+            cam.isRotating = true;
+			cam.currentRotation = Quat::FromMatrix3x3(cam.transform.GetLocalMatrix().GetRotation());
+
         }
 
-            lastSelectedObject = selectedObject;
-			
-        
+        lastSelectedObject = selectedObject;
+
+
     }
-    if(cam.isMoving)
+    if (cam.isMoving)
     {
         cam.transform.position = Lerp(cam.transform.position, cam.targetPosition, 0.1);
         if (cam.transform.position.x - cam.targetPosition.x < 0.01 &&
-            cam.transform.position.y - cam.targetPosition.y <0.01 &&
-            cam.transform.position.z - cam.targetPosition.z <0.01)
+            cam.transform.position.y - cam.targetPosition.y < 0.01 &&
+            cam.transform.position.z - cam.targetPosition.z < 0.01)
         {
             cam.transform.position = cam.targetPosition;
             cam.isMoving = false;
         }
     }
 
-    if(cam.isRotating){
+    if (cam.isRotating) {
         cam.currentRotation = Slerp(cam.currentRotation, cam.targetRotation, 0.1);
-		double yaw, pitch, roll;
-        cam.currentRotation.ToEulerZYX(yaw,pitch,roll);
-		cam.transform.rotation = Vec3{ pitch * (180.0 / M_PI), yaw * (180.0 / M_PI), roll * (180.0 / M_PI) };
+        double yaw, pitch, roll;
+        cam.currentRotation.ToEulerZYX(yaw, pitch, roll);
+        cam.transform.rotation = Vec3{ pitch * (180.0 / M_PI), yaw * (180.0 / M_PI), roll * (180.0 / M_PI) };
         Quat diff = Quat::RotateToTarget(cam.currentRotation, cam.targetRotation);
         double angle;
         Vec3 axis;
@@ -329,8 +334,8 @@ void DrawHierarchyNode(GameObject* node, Camera& cam)
             cam.transform.rotation = Vec3{ pitch * (180.0 / M_PI), yaw * (180.0 / M_PI), roll * (180.0 / M_PI) };
             cam.isRotating = false;
         }
-	}
- 
+    }
+
 
     if (open)
     {

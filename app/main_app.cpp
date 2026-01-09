@@ -228,8 +228,167 @@ GLuint CreateShaderProgram(const std::string& vertPath, const std::string& fragP
 // -----------------------------------------------------------------------------
 GameObject* selectedObject = nullptr;
 GameObject* lastSelectedObject = nullptr;
+void LookAtAll(GameObject* node, Camera& cam) {
+	if (node == nullptr) return;
+    
+    selectedObject = node;
+    Vec3 scale = selectedObject->transform.scale;
+    float objectRadius = 0.5f * sqrt(scale.x * scale.x + scale.y * scale.y + scale.z * scale.z);
+    float distance = objectRadius / tan(cam.fovY * 0.5 * M_PI / 180.0);
 
-void DrawHierarchyNode(GameObject* node, Camera& cam)
+    Matrix4x4 objectWorld = selectedObject->GetGlobalMatrix();
+    Vec3 objectPosition = objectWorld.GetTranslation();
+    Vec3 cameraposition = cam.transform.position;
+  
+    Vec3 finalPos = {
+            objectPosition.x,
+            objectPosition.y,
+			objectPosition.z  
+    };
+  /*  Vec3 forward = Vec3{
+    finalPos.x - cameraposition.x,
+    finalPos.y - cameraposition.y,
+    finalPos.z - cameraposition.z
+
+
+    };*/
+    Vec3 forward = {
+        objectPosition.x - finalPos.x,
+        objectPosition.y - finalPos.y,
+        objectPosition.z - finalPos.z };
+ 
+    if (forward.Norm() == 0)
+        forward = Vec3(0.0f, 0.0f, -1.0f);
+
+    forward.x = forward.x * -1;
+    forward.y = forward.y * -1;
+    forward.z = forward.z * -1;
+    forward = forward.Normalize();
+    Vec3 cameraOffset = {
+ forward.x * distance,
+ forward.y * distance,
+ forward.z * distance
+
+    };
+	finalPos.x += cameraOffset.x;
+	finalPos.y += cameraOffset.y;
+	finalPos.z += cameraOffset.z;
+    Vec3 worldUp(0.0f, 1.0f, 0.0f);
+    if (fabs(Vec3::Dot(worldUp, forward)) > 0.999f) {
+        worldUp = Vec3(0, 0, 1);
+    }
+    Vec3 right = Vec3::Cross(worldUp, forward).Normalize();
+    Vec3 up = Vec3::Cross(forward, right).Normalize();
+    Matrix4x4 m = Matrix4x4::Identity();;
+
+    // los vectores para la rotacion=??
+    m.At(0, 0) = right.x;   m.At(1, 0) = right.y;   m.At(2, 0) = right.z;
+    m.At(0, 1) = up.x;      m.At(1, 1) = up.y;      m.At(2, 1) = up.z;
+    m.At(0, 2) = forward.x; m.At(1, 2) = forward.y; m.At(2, 2) = forward.z;
+
+    //la columna de translacion
+    m.At(0, 3) = finalPos.x;
+    m.At(1, 3) = finalPos.y;
+    m.At(2, 3) = finalPos.z + distance;
+
+    // fila d abajo para q sea afin
+    m.At(3, 0) = 0.0;
+    m.At(3, 1) = 0.0;
+    m.At(3, 2) = 0.0;
+    m.At(3, 3) = 1.0;
+
+    Quat lookRotation = Quat::FromMatrix3x3(m.GetRotation());
+    cam.targetRotation = lookRotation;
+    cam.targetPosition = m.GetTranslation();
+    cam.isMoving = true;
+    cam.isRotating = true;
+    cam.currentRotation = Quat::FromMatrix3x3(cam.transform.GetLocalMatrix().GetRotation());
+
+
+
+    printf("Current rotation: %f, %f, %f\n", cam.transform.rotation.x, cam.transform.rotation.y, cam.transform.rotation.z);
+    printf("Target rotation: %f, %f, %f\n", cam.transform.rotation.x, cam.transform.rotation.y, cam.transform.rotation.z);
+
+}
+void LookAt(GameObject* node, Camera& cam) {
+    if (node == nullptr) return;
+
+    selectedObject = node;
+    Matrix4x4 objectWorld = selectedObject->GetGlobalMatrix();
+    Vec3 objectPosition = objectWorld.GetTranslation();
+    Vec3 cameraposition = cam.transform.position;
+    Vec3 scale = selectedObject->transform.scale;
+    float objectRadius = 0.5f * sqrt(scale.x * scale.x + scale.y * scale.y + scale.z * scale.z);
+    float distance = objectRadius / tan(cam.fovY * 0.5 * M_PI / 180.0);
+    Vec3 finalPos = {
+            objectPosition.x,
+            objectPosition.y,
+            objectPosition.z + 2.0f
+    };
+      Vec3 forward = Vec3{
+      finalPos.x - cameraposition.x,
+      finalPos.y - cameraposition.y,
+      finalPos.z - cameraposition.z
+
+
+      };
+    
+    if (forward.Norm() == 0)
+        forward = Vec3(0.0f, 0.0f, -1.0f);
+    forward.x = forward.x * -1;
+    forward.y = forward.y * -1;
+    forward.z = forward.z * -1;
+    forward = forward.Normalize();
+    Vec3 cameraOffset = {
+ forward.x * distance,
+ forward.y * distance,
+ forward.z * distance
+
+    };
+    finalPos.x += cameraOffset.x;
+    finalPos.y += cameraOffset.y;
+    finalPos.z += cameraOffset.z;
+    Vec3 worldUp(0.0f, 1.0f, 0.0f);
+    if (fabs(Vec3::Dot(worldUp, forward)) > 0.999f) {
+        worldUp = Vec3(0, 0, 1);
+    }
+    Vec3 right = Vec3::Cross(worldUp, forward).Normalize();
+    Vec3 up = Vec3::Cross(forward, right).Normalize();
+    Matrix4x4 m = Matrix4x4::Identity();;
+
+    // los vectores para la rotacion=??
+    m.At(0, 0) = right.x;   m.At(1, 0) = right.y;   m.At(2, 0) = right.z;
+    m.At(0, 1) = up.x;      m.At(1, 1) = up.y;      m.At(2, 1) = up.z;
+    m.At(0, 2) = forward.x; m.At(1, 2) = forward.y; m.At(2, 2) = forward.z;
+
+    //la columna de translacion
+    m.At(0, 3) = finalPos.x;
+    m.At(1, 3) = finalPos.y;
+    m.At(2, 3) = finalPos.z + distance;
+
+    // fila d abajo para q sea afin
+    m.At(3, 0) = 0.0;
+    m.At(3, 1) = 0.0;
+    m.At(3, 2) = 0.0;
+    m.At(3, 3) = 1.0;
+
+    Quat lookRotation = Quat::FromMatrix3x3(m.GetRotation());
+    cam.targetRotation = lookRotation;
+    cam.targetPosition = m.GetTranslation();
+    cam.isMoving = true;
+    cam.isRotating = true;
+    cam.currentRotation = Quat::FromMatrix3x3(cam.transform.GetLocalMatrix().GetRotation());
+
+
+
+    printf("Current rotation: %f, %f, %f\n", cam.transform.rotation.x, cam.transform.rotation.y, cam.transform.rotation.z);
+    printf("Target rotation: %f, %f, %f\n", cam.transform.rotation.x, cam.transform.rotation.y, cam.transform.rotation.z);
+
+
+}
+
+bool wannaLookAt = false;
+void DrawHierarchyNode(GameObject* node, Camera& cam, bool& focusPosition, bool& focusRotation, bool& focusAll)
 {
     if (!node) return;
 
@@ -248,77 +407,40 @@ void DrawHierarchyNode(GameObject* node, Camera& cam)
 
         if (selectedObject != lastSelectedObject)
         {
-            Matrix4x4 objectWorld = selectedObject->GetGlobalMatrix();
-            Vec3 objectPosition = objectWorld.GetTranslation();
-            Vec3 cameraposition = cam.transform.position;
-            Vec3 finalPos = {
-                    objectPosition.x,
-                    objectPosition.y,
-                    objectPosition.z +2.0f
-            };
-            Vec3 forward = Vec3{
-            finalPos.x - cameraposition.x,
-            finalPos.y - cameraposition.y,
-            finalPos.z - cameraposition.z
-
-
-            };
-            if (forward.Norm() == 0)
-                forward = Vec3(0.0f, 0.0f, -1.0f);
-            forward.x = forward.x * -1;
-            forward.y = forward.y * -1;
-            forward.z = forward.z * -1;
-            forward = forward.Normalize();
-            Vec3 worldUp(0.0f, 1.0f, 0.0f);
-            if (fabs(Vec3::Dot(worldUp, forward)) > 0.999f) {
-                worldUp = Vec3(0, 0, 1);
-            }
-            Vec3 right = Vec3::Cross(worldUp, forward).Normalize();
-            Vec3 up = Vec3::Cross(forward, right).Normalize();
-            Matrix4x4 m = Matrix4x4::Identity();;
-
-            // los vectores para la rotacion=??
-            m.At(0, 0) = right.x;   m.At(1, 0) = right.y;   m.At(2, 0) = right.z;
-            m.At(0, 1) = up.x;      m.At(1, 1) = up.y;      m.At(2, 1) = up.z;
-            m.At(0, 2) = forward.x; m.At(1, 2) = forward.y; m.At(2, 2) = forward.z;
-
-            //la columna de translacion
-            m.At(0, 3) = finalPos.x;
-            m.At(1, 3) = finalPos.y;
-            m.At(2, 3) = finalPos.z ;
-
-            // fila d abajo para q sea afin
-            m.At(3, 0) = 0.0;
-            m.At(3, 1) = 0.0;
-            m.At(3, 2) = 0.0;
-            m.At(3, 3) = 1.0;
-
-            Quat lookRotation = Quat::FromMatrix3x3(m.GetRotation());
-            cam.targetRotation = lookRotation;
-            cam.targetPosition = m.GetTranslation();
-            cam.isMoving = true;
-            cam.isRotating = true;
-			cam.currentRotation = Quat::FromMatrix3x3(cam.transform.GetLocalMatrix().GetRotation());
-
+           
         }
 
         lastSelectedObject = selectedObject;
 
 
     }
-    if (cam.isMoving)
+    if ((focusPosition || focusRotation) && wannaLookAt) {
+        LookAt(selectedObject, cam);
+        wannaLookAt = false;
+    }
+    else if (focusAll && wannaLookAt) {
+        LookAtAll(selectedObject, cam);
+        wannaLookAt = false;
+    }
+   
+  
+
+    if (cam.isMoving && (focusPosition|| focusAll))
     {
         cam.transform.position = Lerp(cam.transform.position, cam.targetPosition, 0.1);
-        if (cam.transform.position.x - cam.targetPosition.x < 0.01 &&
-            cam.transform.position.y - cam.targetPosition.y < 0.01 &&
-            cam.transform.position.z - cam.targetPosition.z < 0.01)
-        {
+        if (fabs(cam.transform.position.x - cam.targetPosition.x) < 0.001 &&
+            fabs(cam.transform.position.y - cam.targetPosition.y) < 0.001 &&
+            fabs(cam.transform.position.z - cam.targetPosition.z) < 0.001){
             cam.transform.position = cam.targetPosition;
             cam.isMoving = false;
+            focusPosition = false;
+            if(cam.isRotating == false)
+				focusAll = false;
         }
     }
 
-    if (cam.isRotating) {
+    if (cam.isRotating && (focusRotation|| focusAll)) {
+
         cam.currentRotation = Slerp(cam.currentRotation, cam.targetRotation, 0.1);
         double yaw, pitch, roll;
         cam.currentRotation.ToEulerZYX(yaw, pitch, roll);
@@ -333,6 +455,8 @@ void DrawHierarchyNode(GameObject* node, Camera& cam)
             cam.currentRotation.ToEulerZYX(yaw, pitch, roll);
             cam.transform.rotation = Vec3{ pitch * (180.0 / M_PI), yaw * (180.0 / M_PI), roll * (180.0 / M_PI) };
             cam.isRotating = false;
+			focusRotation = false;
+			if (cam.isMoving == false)focusAll = false;
         }
     }
 
@@ -340,10 +464,11 @@ void DrawHierarchyNode(GameObject* node, Camera& cam)
     if (open)
     {
         for (auto* c : node->children)
-            DrawHierarchyNode(c, cam);
+            DrawHierarchyNode(c, cam, focusPosition, focusRotation, focusAll);
         ImGui::TreePop();
     }
 }
+
 // -----------------------------------------------------------------------------
 // RENDER (TODO)
 // -----------------------------------------------------------------------------
@@ -369,6 +494,9 @@ void RenderNode(GameObject* node, GLuint shaderProgram, const Matrix4x4& view, c
 // MAIN (TODO)
 // -----------------------------------------------------------------------------
 bool mouseclicked = false;
+bool focusPosition = false;
+bool focusRotation = false;
+bool focusAll = false;
 int main(int argc, char** argv) {
     // 1. Setup SDL & OpenGL
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -454,13 +582,26 @@ int main(int argc, char** argv) {
 				
             {
                 if (event.key.scancode == SDL_SCANCODE_W)
-                    mainCamera.transform.position.y -= 0.1;
-                else if (event.key.scancode == SDL_SCANCODE_S)
                     mainCamera.transform.position.y += 0.1;
+                else if (event.key.scancode == SDL_SCANCODE_S)
+                    mainCamera.transform.position.y -= 0.1;
                 else if (event.key.scancode == SDL_SCANCODE_A)
                     mainCamera.transform.position.x -= 0.1;
                 else if (event.key.scancode == SDL_SCANCODE_D)
                     mainCamera.transform.position.x += 0.1;
+                else if(event.key.scancode == SDL_SCANCODE_Q)
+                    mainCamera.transform.position.z += 0.1;
+                else if(event.key.scancode == SDL_SCANCODE_E)
+					mainCamera.transform.position.z -= 0.1;
+                else if (event.key.scancode == SDL_SCANCODE_P) {
+                    focusPosition = true; wannaLookAt = true;
+                }
+                else if (event.key.scancode == SDL_SCANCODE_R) {
+                    focusRotation = true; wannaLookAt = true;
+                }
+                else if (event.key.scancode == SDL_SCANCODE_F) {
+                    focusAll = true; wannaLookAt = true;
+                }
             }
         }
 
@@ -477,7 +618,7 @@ int main(int argc, char** argv) {
 			//TODO: Afegir un nou GameObject a l'arrel de l'escena
         }
         ImGui::Separator();
-        for (auto* obj : sceneRoots) DrawHierarchyNode(obj, mainCamera);
+        for (auto* obj : sceneRoots) DrawHierarchyNode(obj, mainCamera, focusPosition, focusRotation, focusAll);
         ImGui::End();
 
         // UI: Inspector

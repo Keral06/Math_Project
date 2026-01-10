@@ -228,15 +228,30 @@ GLuint CreateShaderProgram(const std::string& vertPath, const std::string& fragP
 // -----------------------------------------------------------------------------
 GameObject* selectedObject = nullptr;
 GameObject* lastSelectedObject = nullptr;
+Vec3 ExtractWorldScale(const Matrix4x4& m)
+{//me he dado cuenta que al escalar el padre, el focus n tiene cuenta la escala del padre cuando calcula la posicion de la camara del hijo
+  //asi que creo esta funcion para extraer la escala del objeto en el mundo
+    Vec3 xAxis(m.At(0, 0), m.At(1, 0), m.At(2, 0));
+    Vec3 yAxis(m.At(0, 1), m.At(1, 1), m.At(2, 1));
+    Vec3 zAxis(m.At(0, 2), m.At(1, 2), m.At(2, 2));
+
+    return Vec3(
+        xAxis.Norm(),
+        yAxis.Norm(),
+        zAxis.Norm()
+    );
+}
 void LookAtAll(GameObject* node, Camera& cam) {
 	if (node == nullptr) return;
     
     selectedObject = node;
-    Vec3 scale = selectedObject->transform.scale;
+    Matrix4x4 objectWorld = selectedObject->GetGlobalMatrix();
+    Vec3 scale = ExtractWorldScale(objectWorld);
+
     float objectRadius = 0.5f * sqrt(scale.x * scale.x + scale.y * scale.y + scale.z * scale.z);
     float distance = objectRadius / tan(cam.fovY * 0.5 * M_PI / 180.0);
 
-    Matrix4x4 objectWorld = selectedObject->GetGlobalMatrix();
+   
     Vec3 objectPosition = objectWorld.GetTranslation();
     Vec3 cameraposition = cam.transform.position;
   
@@ -317,13 +332,16 @@ void LookAt(GameObject* node, Camera& cam) {
     Matrix4x4 objectWorld = selectedObject->GetGlobalMatrix();
     Vec3 objectPosition = objectWorld.GetTranslation();
     Vec3 cameraposition = cam.transform.position;
-    Vec3 scale = selectedObject->transform.scale;
+  
+    Vec3 scale = ExtractWorldScale(objectWorld);
+
+  
     float objectRadius = 0.5f * sqrt(scale.x * scale.x + scale.y * scale.y + scale.z * scale.z);
     float distance = objectRadius / tan(cam.fovY * 0.5 * M_PI / 180.0);
     Vec3 finalPos = {
             objectPosition.x,
             objectPosition.y,
-            objectPosition.z + 2.0f
+            objectPosition.z 
     };
       Vec3 forward = Vec3{
       finalPos.x - cameraposition.x,
